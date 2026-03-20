@@ -28,7 +28,7 @@ func migrate(db *sql.DB) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS nodes (
 			id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-			app_id          VARCHAR(64) NOT NULL UNIQUE,
+			node_id         VARCHAR(64) NOT NULL UNIQUE,
 			node_public_key VARCHAR(42) NOT NULL UNIQUE,
 			name            VARCHAR(128) NOT NULL,
 			avatar          VARCHAR(512),

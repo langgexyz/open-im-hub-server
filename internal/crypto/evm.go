@@ -59,3 +59,16 @@ func PrivKeyToHex(privKey *ecdsa.PrivateKey) string {
 func PrivKeyFromHex(hexKey string) (*ecdsa.PrivateKey, error) {
 	return crypto.HexToECDSA(strings.TrimPrefix(hexKey, "0x"))
 }
+
+// PubKeyFromPrivHex 从私钥 hex 字符串返回对应的以太坊地址（公钥地址 hex）
+func PubKeyFromPrivHex(privHex string) (string, error) {
+	priv, err := PrivKeyFromHex(privHex)
+	if err != nil {
+		return "", err
+	}
+	addr, err := PrivKeyToAddress(priv)
+	if err != nil {
+		return "", err
+	}
+	return addr, nil
+}

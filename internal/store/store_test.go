@@ -50,7 +50,7 @@ func TestNodeCRUD(t *testing.T) {
 	s := testStore(t)
 
 	node := &store.Node{
-		AppID:         "app-001",
+		NodeID:        "app-001",
 		NodePublicKey: "0xabc",
 		Name:          "Test Node",
 		WSAddr:        "wss://test.example.com",
@@ -61,7 +61,7 @@ func TestNodeCRUD(t *testing.T) {
 
 	found, err := s.Nodes.GetByPublicKey("0xabc")
 	require.NoError(t, err)
-	require.Equal(t, "app-001", found.AppID)
+	require.Equal(t, "app-001", found.NodeID)
 
 	require.NoError(t, s.Nodes.UpdateHeartbeat("0xabc"))
 

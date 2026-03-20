@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -16,15 +17,18 @@ import (
 	"google.golang.org/grpc/status"
 	"github.com/google/uuid"
 	hubcrypto "github.com/langgexyz/open-im-hub-server/internal/crypto"
+	"github.com/langgexyz/open-im-hub-server/internal/push"
 	"github.com/langgexyz/open-im-hub-server/internal/store"
 	hubv1 "github.com/langgexyz/open-im-hub-proto/hub/v1"
 )
 
 type hubService struct {
 	hubv1.UnimplementedHubServiceServer
-	store        NodeStore
-	hubPrivKey   *ecdsa.PrivateKey
-	hubPublicKey string
+	store         NodeStore
+	hubPrivKey    *ecdsa.PrivateKey
+	hubPublicKey  string
+	iosPusher     push.Pusher
+	androidPusher push.Pusher
 }
 
 // Activate 节点注册：激活码鉴权（metadata: x-activation-code）
@@ -43,7 +47,7 @@ func (s *hubService) Activate(ctx context.Context, req *hubv1.ActivateRequest) (
 
 	appID := uuid.NewString()
 	node := &store.Node{
-		AppID:         appID,
+		NodeID:        appID,
 		NodePublicKey: req.NodePublicKey,
 		Name:          appID,
 		WSAddr:        req.NodeWsAddr,
@@ -90,9 +94,58 @@ func (s *hubService) SignSession(ctx context.Context, req *hubv1.SignSessionRequ
 	}, nil
 }
 
-// PushNotify 转发离线推送
+// PushNotify 转发离线推送（APNs/FCM）
 func (s *hubService) PushNotify(ctx context.Context, req *hubv1.PushNotifyRequest) (*hubv1.PushNotifyResponse, error) {
-	// push 逻辑通过注入的 Pusher 完成，在 Task 6 集成后补充
+	if len(req.AppUids) == 0 {
+		return &hubv1.PushNotifyResponse{Ok: true}, nil
+	}
+
+	tokenMap, err := s.store.GetDeviceTokens(req.AppUids)
+	if err != nil {
+		log.Printf("PushNotify: get device tokens error: %v", err)
+		return nil, status.Error(codes.Internal, "get device tokens")
+	}
+
+	var dataMap map[string]any
+	if req.DataJson != "" {
+		_ = json.Unmarshal([]byte(req.DataJson), &dataMap)
+	}
+
+	sent, failed, skipped := 0, 0, 0
+	for _, tokens := range tokenMap {
+		for _, dt := range tokens {
+			var p push.Pusher
+			switch dt.Platform {
+			case push.PlatformIOS:
+				p = s.iosPusher
+			case push.PlatformAndroid:
+				p = s.androidPusher
+			default:
+				log.Printf("PushNotify: unknown platform %d uid=%s", dt.Platform, dt.AppUID)
+				skipped++
+				continue
+			}
+			msg := push.Message{
+				Token:    dt.Token,
+				Platform: dt.Platform,
+				Title:    req.Title,
+				Body:     req.Body,
+				Data:     dataMap,
+			}
+			if err := p.Send(ctx, msg); err != nil {
+				log.Printf("PushNotify: send failed uid=%s platform=%d token=%.12s... err=%v",
+					dt.AppUID, dt.Platform, dt.Token, err)
+				failed++
+			} else {
+				log.Printf("PushNotify: sent uid=%s platform=%d token=%.12s...",
+					dt.AppUID, dt.Platform, dt.Token)
+				sent++
+			}
+		}
+	}
+	log.Printf("PushNotify: requested=%d tokens_found=%d sent=%d failed=%d skipped=%d",
+		len(req.AppUids), len(tokenMap), sent, failed, skipped)
+
 	return &hubv1.PushNotifyResponse{Ok: true}, nil
 }
 

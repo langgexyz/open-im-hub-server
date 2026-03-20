@@ -8,7 +8,7 @@ import (
 
 type Node struct {
 	ID            uint64
-	AppID         string
+	NodeID        string
 	NodePublicKey string
 	Name          string
 	Avatar        string
@@ -24,8 +24,8 @@ type NodeStore struct{ db *sql.DB }
 
 func (s *NodeStore) Insert(n *Node) error {
 	_, err := s.db.Exec(
-		`INSERT INTO nodes (app_id, node_public_key, name, ws_addr, status, expires_at) VALUES (?,?,?,?,?,?)`,
-		n.AppID, n.NodePublicKey, n.Name, n.WSAddr, n.Status, n.ExpiresAt,
+		`INSERT INTO nodes (node_id, node_public_key, name, ws_addr, status, expires_at) VALUES (?,?,?,?,?,?)`,
+		n.NodeID, n.NodePublicKey, n.Name, n.WSAddr, n.Status, n.ExpiresAt,
 	)
 	return err
 }
@@ -34,9 +34,9 @@ func (s *NodeStore) GetByPublicKey(pubKey string) (*Node, error) {
 	var n Node
 	var lastHB sql.NullTime
 	err := s.db.QueryRow(
-		`SELECT id, app_id, node_public_key, name, ws_addr, status, expires_at, last_heartbeat FROM nodes WHERE node_public_key = ?`,
+		`SELECT id, node_id, node_public_key, name, ws_addr, status, expires_at, last_heartbeat FROM nodes WHERE node_public_key = ?`,
 		pubKey,
-	).Scan(&n.ID, &n.AppID, &n.NodePublicKey, &n.Name, &n.WSAddr, &n.Status, &n.ExpiresAt, &lastHB)
+	).Scan(&n.ID, &n.NodeID, &n.NodePublicKey, &n.Name, &n.WSAddr, &n.Status, &n.ExpiresAt, &lastHB)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("node not found")
 	}
@@ -56,7 +56,7 @@ func (s *NodeStore) UpdateHeartbeat(pubKey string) error {
 
 func (s *NodeStore) List() ([]*Node, error) {
 	rows, err := s.db.Query(
-		`SELECT id, app_id, node_public_key, name, avatar, description, ws_addr, status, expires_at, last_heartbeat FROM nodes WHERE status = 1`,
+		`SELECT id, node_id, node_public_key, name, avatar, description, ws_addr, status, expires_at, last_heartbeat FROM nodes WHERE status = 1`,
 	)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func (s *NodeStore) List() ([]*Node, error) {
 		var n Node
 		var avatar, description sql.NullString
 		var lastHB sql.NullTime
-		if err := rows.Scan(&n.ID, &n.AppID, &n.NodePublicKey, &n.Name, &avatar, &description, &n.WSAddr, &n.Status, &n.ExpiresAt, &lastHB); err != nil {
+		if err := rows.Scan(&n.ID, &n.NodeID, &n.NodePublicKey, &n.Name, &avatar, &description, &n.WSAddr, &n.Status, &n.ExpiresAt, &lastHB); err != nil {
 			return nil, err
 		}
 		n.Avatar = avatar.String
