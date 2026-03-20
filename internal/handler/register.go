@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -47,6 +48,10 @@ func (h *RegisterHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid node URL"})
 		return
 	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported scheme"})
+		return
+	}
 
 	code := parsed.Query().Get("code")
 	if len(code) < 16 {
@@ -57,11 +62,15 @@ func (h *RegisterHandler) Register(c *gin.Context) {
 	// 探活：向 /node/info 发 GET，避免触发 POST-only 的 /node/activate
 	probeURL := fmt.Sprintf("%s://%s/node/info", parsed.Scheme, parsed.Host)
 	resp, err := http.Get(probeURL) //nolint:noctx
-	if err != nil || resp.StatusCode >= 500 {
+	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "node unreachable"})
 		return
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "node unreachable"})
+		return
+	}
 
 	// 生成节点密钥对
 	privKey, pubKey, err := crypto.GenerateKey()
@@ -97,7 +106,11 @@ func (h *RegisterHandler) Register(c *gin.Context) {
 		NodePublicKey:  pubKey,
 		HubPublicKey:   hubPubKey,
 	}
-	plaintext, _ := json.Marshal(payload)
+	plaintext, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "payload encoding failed"})
+		return
+	}
 
 	aesKey := makeAESKey(code)
 	ciphertext, err := crypto.AESEncrypt(aesKey, plaintext)
@@ -109,18 +122,21 @@ func (h *RegisterHandler) Register(c *gin.Context) {
 	// POST 加密数据到节点激活端点
 	activateURL := fmt.Sprintf("%s://%s/node/activate?code=%s", parsed.Scheme, parsed.Host, code)
 	httpResp, err := http.Post(activateURL, "application/octet-stream", bytes.NewReader(ciphertext)) //nolint:noctx
-	if err != nil || httpResp.StatusCode != http.StatusOK {
+	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to deliver activation data to node"})
 		return
 	}
-	httpResp.Body.Close()
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to deliver activation data to node"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"node_id": nodeID, "message": "node activated successfully"})
 }
 
-// makeAESKey 将 code 转换为 32 字节 AES key（截断或右填充 0）
+// makeAESKey 对 code 做 SHA-256 派生 32 字节 AES key
 func makeAESKey(code string) []byte {
-	key := make([]byte, 32)
-	copy(key, []byte(code))
-	return key
+	sum := sha256.Sum256([]byte(code))
+	return sum[:]
 }
