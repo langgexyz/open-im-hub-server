@@ -8,12 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	hubauth "github.com/langgexyz/open-im-hub-server/internal/auth"
 	hubcrypto "github.com/langgexyz/open-im-hub-server/internal/crypto"
 	"github.com/langgexyz/open-im-hub-server/internal/store"
 )
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 // ActivateHandler handles idempotent node activation via POST /node/activate.
 type ActivateHandler struct {
@@ -66,15 +69,30 @@ func (h *ActivateHandler) Activate(c *gin.Context) {
 	}
 
 	adminUID := c.GetString(hubauth.ContextUID)
+	if adminUID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing uid"})
+		return
+	}
 
 	// 1. Probe node liveness via GET /node/info
 	infoURL := req.NodeServerAddr + "/node/info"
-	resp, err := http.Get(infoURL) //nolint:noctx
-	if err != nil || resp.StatusCode >= 500 {
+	resp, err := httpClient.Get(infoURL) //nolint:noctx
+	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "node unreachable"})
 		return
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "node unreachable"})
+		return
+	}
+
+	// 1b. Check if already activated (idempotent return)
+	existing, err := h.nodes.GetByAppID(req.Code)
+	if err == nil && existing.Status == 1 {
+		c.JSON(http.StatusOK, gin.H{"app_id": req.Code, "message": "node already activated"})
+		return
+	}
 
 	// 2. Generate a fresh node key pair (address used as AppPublicKey per existing convention)
 	nodePriv, nodePub, err := hubcrypto.GenerateKey()
@@ -107,7 +125,11 @@ func (h *ActivateHandler) Activate(c *gin.Context) {
 		HubPublicKey:  h.hubPublicKey,
 		HubWebOrigin:  h.hubWebOrigin,
 	}
-	plaintext, _ := json.Marshal(payload)
+	plaintext, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "marshal payload failed"})
+		return
+	}
 	aesKey := deriveAESKey(req.Code)
 	ciphertext, err := hubcrypto.AESEncrypt(aesKey, plaintext)
 	if err != nil {
@@ -116,7 +138,7 @@ func (h *ActivateHandler) Activate(c *gin.Context) {
 	}
 
 	activateURL := fmt.Sprintf("%s/node/activate?code=%s", req.NodeServerAddr, req.Code)
-	httpResp, err := http.Post(activateURL, "application/octet-stream", bytes.NewReader(ciphertext)) //nolint:noctx
+	httpResp, err := httpClient.Post(activateURL, "application/octet-stream", bytes.NewReader(ciphertext)) //nolint:noctx
 	if err != nil || httpResp.StatusCode != http.StatusOK {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to activate node"})
 		return
