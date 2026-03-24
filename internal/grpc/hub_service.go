@@ -3,17 +3,15 @@ package grpcserver
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"log"
 	"strconv"
 	"strings"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	hubauth "github.com/langgexyz/open-im-hub-server/internal/auth"
 	hubcrypto "github.com/langgexyz/open-im-hub-server/internal/crypto"
 	"github.com/langgexyz/open-im-hub-server/internal/push"
 	"github.com/langgexyz/open-im-hub-server/internal/store"
@@ -43,20 +41,24 @@ func (s *hubService) SignSession(ctx context.Context, req *hubv1.SignSessionRequ
 	node := ctx.Value(nodeKey{}).(*store.Node)
 
 	credStr := strings.TrimPrefix(req.UserCredential, "Bearer ")
-	appUID, err := verifyCredential(credStr, s.hubPublicKey)
+
+	uid, appID, err := hubauth.VerifyCredential(credStr, s.hubPublicKey)
 	if err != nil {
 		return nil, status.Error(codes.Unauthenticated, "invalid credential: "+err.Error())
 	}
+	// 验证 credential 绑定的 app_id 与本节点匹配（防跨节点重放）
+	if !strings.EqualFold(appID, node.AppID) {
+		return nil, status.Error(codes.Unauthenticated, "credential app_id mismatch")
+	}
 
-	// session_sig = Sign(keccak256(node_public_key || 0x00 || app_uid || 0x00 || expiry), hub_private_key)
-	msg := buildSessionMsg(node.AppPublicKey, appUID, req.Expiry)
+	msg := buildSessionMsg(node.AppPublicKey, uid, req.Expiry)
 	sig, err := hubcrypto.Sign(msg, s.hubPrivKey)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "sign failed")
 	}
 	return &hubv1.SignSessionResponse{
 		SessionSig: "0x" + hex.EncodeToString(sig),
-		AppUid:     appUID,
+		AppUid:     uid,
 	}, nil
 }
 
@@ -125,36 +127,6 @@ func (s *hubService) PushNotify(ctx context.Context, req *hubv1.PushNotifyReques
 
 // --- 内部工具 ---
 
-func verifyCredential(tokenStr, hubPublicKey string) (string, error) {
-	parts := strings.SplitN(tokenStr, ".", 2)
-	if len(parts) != 2 {
-		return "", errors.New("malformed credential")
-	}
-	payloadB64, sigHex := parts[0], parts[1]
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(payloadB64)
-	if err != nil {
-		return "", errors.New("invalid payload encoding")
-	}
-	var payload struct {
-		AppUID string `json:"app_uid"`
-		Exp    int64  `json:"exp"`
-	}
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return "", errors.New("invalid payload json")
-	}
-	if time.Now().Unix() > payload.Exp {
-		return "", errors.New("credential expired")
-	}
-	sig, err := hex.DecodeString(sigHex)
-	if err != nil || len(sig) != 65 {
-		return "", errors.New("invalid signature format")
-	}
-	recovered, err := hubcrypto.Ecrecover([]byte(payloadB64), sig)
-	if err != nil || !strings.EqualFold(recovered, hubPublicKey) {
-		return "", errors.New("signature verification failed")
-	}
-	return payload.AppUID, nil
-}
 
 func buildSessionMsg(nodePublicKey, appUID string, expiry int64) []byte {
 	var msg []byte
