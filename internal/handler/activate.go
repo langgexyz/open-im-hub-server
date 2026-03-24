@@ -139,11 +139,15 @@ func (h *ActivateHandler) Activate(c *gin.Context) {
 
 	activateURL := fmt.Sprintf("%s/node/activate?code=%s", req.NodeServerAddr, req.Code)
 	httpResp, err := httpClient.Post(activateURL, "application/octet-stream", bytes.NewReader(ciphertext)) //nolint:noctx
-	if err != nil || httpResp.StatusCode != http.StatusOK {
+	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to activate node"})
 		return
 	}
-	httpResp.Body.Close()
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode != http.StatusOK {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to activate node"})
+		return
+	}
 
 	// 5. Mark node as active (status=1). Ignore ErrNodeNotFound — means it was
 	// already activated (idempotent second call where status was already 1).
