@@ -23,7 +23,10 @@ func (s *UserStore) Create(email, passwordHash string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("create user: %w", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("create user: last insert id: %w", err)
+	}
 	return uint64(id), nil
 }
 
@@ -33,8 +36,11 @@ func (s *UserStore) GetByEmail(email string) (*User, error) {
 	err := s.db.QueryRow(
 		`SELECT id, email, password, created_at FROM users WHERE email = ?`, email,
 	).Scan(&u.ID, &u.Email, &u.Password, &u.CreatedAt)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("user not found")
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("get user by email: %w", err)
 	}
-	return &u, err
+	return &u, nil
 }
