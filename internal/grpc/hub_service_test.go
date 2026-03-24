@@ -41,9 +41,12 @@ func (m *mockStore) GetByPublicKey(k string) (*store.Node, error) {
 	}
 	return n, nil
 }
-func (m *mockStore) Insert(n *store.Node) error         { m.nodes[n.NodePublicKey] = n; return nil }
+func (m *mockStore) Upsert(n *store.Node) error         { m.nodes[n.AppPublicKey] = n; return nil }
 func (m *mockStore) UpdateHeartbeat(k string) error     { return nil }
 func (m *mockStore) List() ([]*store.Node, error)       { return nil, nil }
+func (m *mockStore) GetDeviceTokens(appUIDs []string) (map[string][]store.DeviceToken, error) {
+	return nil, nil
+}
 func buildMsg(parts ...[]byte) []byte {
 	var msg []byte
 	for i, p := range parts {
@@ -62,7 +65,7 @@ func TestUpdateNodeProfile(t *testing.T) {
 	require.NoError(t, err)
 	_ = nodePriv
 	ms.nodes[nodePub] = &store.Node{
-		NodePublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
+		AppPublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
 	}
 
 	hubPriv, hubPub, _ := hubcrypto.GenerateKey()
@@ -86,7 +89,7 @@ func TestHeartbeat(t *testing.T) {
 	nodePriv, nodePub, err := hubcrypto.GenerateKey()
 	require.NoError(t, err)
 	ms.nodes[nodePub] = &store.Node{
-		NodePublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
+		AppPublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
 	}
 
 	hubPriv, hubPub, _ := hubcrypto.GenerateKey()
@@ -124,7 +127,7 @@ func TestSignSession(t *testing.T) {
 	ms := newMockStore()
 	nodePriv, nodePub, _ := hubcrypto.GenerateKey()
 	ms.nodes[nodePub] = &store.Node{
-		NodePublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
+		AppPublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
 	}
 
 	hubPriv, hubPub, _ := hubcrypto.GenerateKey()

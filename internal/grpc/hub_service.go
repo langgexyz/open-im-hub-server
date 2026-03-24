@@ -32,7 +32,7 @@ type hubService struct {
 // Heartbeat 节点心跳（需通过 interceptor 节点签名验证）
 func (s *hubService) Heartbeat(ctx context.Context, req *hubv1.HeartbeatRequest) (*hubv1.HeartbeatResponse, error) {
 	node := ctx.Value(nodeKey{}).(*store.Node)
-	if err := s.store.UpdateHeartbeat(node.NodePublicKey); err != nil {
+	if err := s.store.UpdateHeartbeat(node.AppPublicKey); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &hubv1.HeartbeatResponse{Ok: true}, nil
@@ -49,7 +49,7 @@ func (s *hubService) SignSession(ctx context.Context, req *hubv1.SignSessionRequ
 	}
 
 	// session_sig = Sign(keccak256(node_public_key || 0x00 || app_uid || 0x00 || expiry), hub_private_key)
-	msg := buildSessionMsg(node.NodePublicKey, appUID, req.Expiry)
+	msg := buildSessionMsg(node.AppPublicKey, appUID, req.Expiry)
 	sig, err := hubcrypto.Sign(msg, s.hubPrivKey)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "sign failed")

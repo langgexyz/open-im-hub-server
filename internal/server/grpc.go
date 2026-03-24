@@ -41,7 +41,9 @@ func (g *GRPCServer) Addr() string { return g.lis.Addr().String() }
 type nodeStoreAdapter struct{ s *store.Store }
 
 func (a *nodeStoreAdapter) GetByPublicKey(k string) (*store.Node, error) { return a.s.Nodes.GetByPublicKey(k) }
-func (a *nodeStoreAdapter) Insert(n *store.Node) error                   { return a.s.Nodes.Insert(n) }
+func (a *nodeStoreAdapter) Upsert(n *store.Node) error                   { return a.s.Nodes.Upsert(n) }
 func (a *nodeStoreAdapter) UpdateHeartbeat(k string) error               { return a.s.Nodes.UpdateHeartbeat(k) }
 func (a *nodeStoreAdapter) List() ([]*store.Node, error)                 { return a.s.Nodes.List() }
-func (a *nodeStoreAdapter) ConsumeCode(code string) error                { return a.s.Codes.Consume(code) }
+func (a *nodeStoreAdapter) GetDeviceTokens(appUIDs []string) (map[string][]store.DeviceToken, error) {
+	return a.s.DeviceTokens.GetByUIDs(appUIDs)
+}

@@ -22,9 +22,10 @@ type nodeKey struct{}
 // NodeStore 是 server 依赖的 store 接口（便于测试 mock）
 type NodeStore interface {
 	GetByPublicKey(pubKey string) (*store.Node, error)
-	Insert(n *store.Node) error
+	Upsert(n *store.Node) error
 	UpdateHeartbeat(pubKey string) error
 	List() ([]*store.Node, error)
+	GetDeviceTokens(appUIDs []string) (map[string][]store.DeviceToken, error)
 }
 
 // New 创建 gRPC server，包含节点签名验证 interceptor

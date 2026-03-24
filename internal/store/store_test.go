@@ -36,28 +36,51 @@ func testStore(t *testing.T) (*store.Store, *sql.DB) {
 	return s, db
 }
 
-func TestNodeCRUD(t *testing.T) {
-	s, _ := testStore(t)
+func TestNodeStoreUpsert(t *testing.T) {
+	db := openTestDB(t)
+	s, _ := store.New(db)
+	t.Cleanup(func() {
+		db.Exec("TRUNCATE TABLE nodes")
+		db.Close()
+	})
 
 	node := &store.Node{
-		NodeID:        "app-001",
-		NodePublicKey: "0xabc",
-		Name:          "Test Node",
-		WSAddr:        "wss://test.example.com",
-		Status:        1,
-		ExpiresAt:     time.Now().Add(365 * 24 * time.Hour),
+		AppID:          "code-abc123",
+		AppPublicKey:   "0xDEAD",
+		NodeServerAddr: "http://node:8080",
+		NodeWebAddr:    "http://node.example.com",
+		AdminUID:       "10001",
+		Status:         0,
 	}
-	require.NoError(t, s.Nodes.Insert(node))
-
-	found, err := s.Nodes.GetByPublicKey("0xabc")
+	err := s.Nodes.Upsert(node)
 	require.NoError(t, err)
-	require.Equal(t, "app-001", found.NodeID)
 
-	require.NoError(t, s.Nodes.UpdateHeartbeat("0xabc"))
-
-	nodes, err := s.Nodes.List()
+	// 幂等重试
+	err = s.Nodes.Upsert(node)
 	require.NoError(t, err)
-	require.Len(t, nodes, 1)
+
+	// 查询
+	n, err := s.Nodes.GetByAppID("code-abc123")
+	require.NoError(t, err)
+	require.Equal(t, "0xDEAD", n.AppPublicKey)
+}
+
+func TestNodeStoreUpdateProfile(t *testing.T) {
+	db := openTestDB(t)
+	s, _ := store.New(db)
+	t.Cleanup(func() {
+		db.Exec("TRUNCATE TABLE nodes")
+		db.Close()
+	})
+
+	// 先插入
+	_ = s.Nodes.Upsert(&store.Node{AppID: "n1", AppPublicKey: "0xABC", Status: 0})
+	// 更新资料
+	err := s.Nodes.UpdateProfile("n1", "科技快讯", "http://avatar.png", "科技资讯公众号")
+	require.NoError(t, err)
+
+	n, _ := s.Nodes.GetByAppID("n1")
+	require.Equal(t, "科技快讯", n.Name)
 }
 
 func TestDeviceTokens(t *testing.T) {

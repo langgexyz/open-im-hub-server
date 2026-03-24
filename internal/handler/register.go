@@ -91,9 +91,9 @@ func (h *RegisterHandler) Register(c *gin.Context) {
 	}
 
 	// 写入 nodes 表
-	if err := h.store.Nodes.Insert(&store.Node{
-		NodeID:        nodeID,
-		NodePublicKey: pubKey,
+	if err := h.store.Nodes.Upsert(&store.Node{
+		AppID:        nodeID,
+		AppPublicKey: pubKey,
 	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db error"})
 		return
