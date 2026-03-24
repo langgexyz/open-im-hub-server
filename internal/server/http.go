@@ -18,12 +18,12 @@ func NewHTTPServer(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 	deviceTokenH := handler.NewDeviceTokenHandler(s.DeviceTokens, cfg.HubPublicKey)
 	directoryH := handler.NewDirectoryHandler(s.Nodes)
-	registerH := handler.NewRegisterHandler(s, cfg.HubPrivateKey)
+	activateH := handler.NewActivateHandler(s.Nodes, cfg.HubPrivateKey, cfg.HubGRPCAddr, cfg.HubWebOrigin)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.POST("/user/device-token", deviceTokenH.Register)
 	r.GET("/nodes", directoryH.List)
-	r.GET("/register", registerH.Register)
+	r.POST("/node/activate", activateH.Activate)
 	return r, nil
 }

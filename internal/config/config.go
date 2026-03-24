@@ -15,9 +15,11 @@ type Config struct {
 	HubPrivateKeyObj *ecdsa.PrivateKey
 	HubPublicKey     string // 从私钥派生，激活时返回给节点
 
-	MySQLDSN string
-	HTTPAddr string // App 客户端 HTTP 服务，默认 ":8080"
-	GRPCAddr string // 节点 gRPC 服务，默认 ":50051"
+	MySQLDSN     string
+	HTTPAddr     string // App 客户端 HTTP 服务，默认 ":8080"
+	GRPCAddr     string // 节点 gRPC 服务，默认 ":50051"
+	HubGRPCAddr  string // 下发给 Node 的外部 gRPC 地址，如 "hub.example.com:50051"
+	HubWebOrigin string // 下发给 Node 的 Web origin，如 "https://hub.example.com"
 
 	// APNs 配置（可选）
 	APNsKeyFile  string
@@ -49,6 +51,8 @@ func Load() (*Config, error) {
 	if grpcAddr == "" {
 		grpcAddr = ":50051"
 	}
+	hubGRPCAddr := os.Getenv("HUB_GRPC_EXTERNAL_ADDR")
+	hubWebOrigin := os.Getenv("HUB_WEB_ORIGIN")
 
 	sandbox, _ := strconv.ParseBool(os.Getenv("APNS_SANDBOX"))
 
@@ -59,6 +63,8 @@ func Load() (*Config, error) {
 		MySQLDSN:         requireEnv("MYSQL_DSN"),
 		HTTPAddr:         httpAddr,
 		GRPCAddr:         grpcAddr,
+		HubGRPCAddr:      hubGRPCAddr,
+		HubWebOrigin:     hubWebOrigin,
 		APNsKeyFile:      os.Getenv("APNS_KEY_FILE"),
 		APNsKeyID:        os.Getenv("APNS_KEY_ID"),
 		APNsTeamID:       os.Getenv("APNS_TEAM_ID"),
