@@ -13,9 +13,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"github.com/google/uuid"
 	hubcrypto "github.com/langgexyz/open-im-hub-server/internal/crypto"
 	"github.com/langgexyz/open-im-hub-server/internal/push"
 	"github.com/langgexyz/open-im-hub-server/internal/store"
@@ -29,38 +27,6 @@ type hubService struct {
 	hubPublicKey  string
 	iosPusher     push.Pusher
 	androidPusher push.Pusher
-}
-
-// Activate 节点注册：激活码鉴权（metadata: x-activation-code）
-func (s *hubService) Activate(ctx context.Context, req *hubv1.ActivateRequest) (*hubv1.ActivateResponse, error) {
-	md, _ := metadata.FromIncomingContext(ctx)
-	codesList := md.Get("x-activation-code")
-	if len(codesList) == 0 {
-		return nil, status.Error(codes.Unauthenticated, "missing x-activation-code")
-	}
-	if err := s.store.ConsumeCode(codesList[0]); err != nil {
-		if errors.Is(err, store.ErrCodeNotFound) || errors.Is(err, store.ErrCodeUsed) {
-			return nil, status.Error(codes.Unauthenticated, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	appID := uuid.NewString()
-	node := &store.Node{
-		NodeID:        appID,
-		NodePublicKey: req.NodePublicKey,
-		Name:          appID,
-		WSAddr:        req.NodeWsAddr,
-		Status:        1,
-		ExpiresAt:     time.Now().Add(365 * 24 * time.Hour),
-	}
-	if err := s.store.Insert(node); err != nil {
-		return nil, status.Error(codes.Internal, "register node: "+err.Error())
-	}
-	return &hubv1.ActivateResponse{
-		AppId:        appID,
-		HubPublicKey: s.hubPublicKey,
-	}, nil
 }
 
 // Heartbeat 节点心跳（需通过 interceptor 节点签名验证）

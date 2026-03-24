@@ -26,13 +26,11 @@ var _ = hubv1.UpdateNodeProfileRequest{}
 // mockStore 最小化 store mock，供测试使用
 type mockStore struct {
 	nodes map[string]*store.Node
-	codes map[string]bool
 }
 
 func newMockStore() *mockStore {
 	return &mockStore{
 		nodes: map[string]*store.Node{},
-		codes: map[string]bool{},
 	}
 }
 
@@ -46,14 +44,6 @@ func (m *mockStore) GetByPublicKey(k string) (*store.Node, error) {
 func (m *mockStore) Insert(n *store.Node) error         { m.nodes[n.NodePublicKey] = n; return nil }
 func (m *mockStore) UpdateHeartbeat(k string) error     { return nil }
 func (m *mockStore) List() ([]*store.Node, error)       { return nil, nil }
-func (m *mockStore) ConsumeCode(code string) error {
-	if !m.codes[code] {
-		return store.ErrCodeNotFound
-	}
-	delete(m.codes, code)
-	return nil
-}
-
 func buildMsg(parts ...[]byte) []byte {
 	var msg []byte
 	for i, p := range parts {
@@ -65,13 +55,17 @@ func buildMsg(parts ...[]byte) []byte {
 	return msg
 }
 
-func TestActivate(t *testing.T) {
+func TestUpdateNodeProfile(t *testing.T) {
+	t.Skip("TODO: implement TestUpdateNodeProfile once UpdateNodeProfile is wired in hub_service.go")
 	ms := newMockStore()
-	ms.codes["TESTCODE"] = true
-
-	hubPriv, hubPub, err := hubcrypto.GenerateKey()
+	nodePriv, nodePub, err := hubcrypto.GenerateKey()
 	require.NoError(t, err)
+	_ = nodePriv
+	ms.nodes[nodePub] = &store.Node{
+		NodePublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
+	}
 
+	hubPriv, hubPub, _ := hubcrypto.GenerateKey()
 	srv := grpcserver.New(ms, hubPriv, hubPub)
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	go srv.Serve(lis)
@@ -81,14 +75,10 @@ func TestActivate(t *testing.T) {
 	defer conn.Close()
 	client := hubv1.NewHubServiceClient(conn)
 
-	ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("x-activation-code", "TESTCODE"))
-	resp, err := client.Activate(ctx, &hubv1.ActivateRequest{
-		NodePublicKey: "0xnodepubkey",
-		NodeWsAddr:    "wss://test.example.com",
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, resp.AppId)
-	require.Equal(t, hubPub, resp.HubPublicKey)
+	// TODO: build signed metadata and call svc.UpdateNodeProfile(...)
+	_ = client
+	req := &hubv1.UpdateNodeProfileRequest{}
+	_ = req
 }
 
 func TestHeartbeat(t *testing.T) {

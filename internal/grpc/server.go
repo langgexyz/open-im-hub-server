@@ -25,7 +25,6 @@ type NodeStore interface {
 	Insert(n *store.Node) error
 	UpdateHeartbeat(pubKey string) error
 	List() ([]*store.Node, error)
-	ConsumeCode(code string) error
 }
 
 // New 创建 gRPC server，包含节点签名验证 interceptor
@@ -43,11 +42,6 @@ func New(s NodeStore, hubPrivKey *ecdsa.PrivateKey, hubPublicKey string) *grpc.S
 
 func nodeAuthInterceptor(nodes NodeStore) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		// Activate 用激活码鉴权，跳过节点签名验证
-		if strings.HasSuffix(info.FullMethod, "/Activate") {
-			return handler(ctx, req)
-		}
-
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return nil, status.Error(codes.Unauthenticated, "missing metadata")
