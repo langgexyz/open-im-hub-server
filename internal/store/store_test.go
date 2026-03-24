@@ -109,6 +109,28 @@ func TestUsersTableExists(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestUserStore(t *testing.T) {
+	db := openTestDB(t)
+	s, _ := store.New(db)
+	t.Cleanup(func() {
+		db.Exec("TRUNCATE TABLE users")
+		db.Close()
+	})
+
+	uid, err := s.Users.Create("alice@example.com", "hashedpwd")
+	require.NoError(t, err)
+	require.Greater(t, uid, uint64(0))
+
+	u, err := s.Users.GetByEmail("alice@example.com")
+	require.NoError(t, err)
+	require.Equal(t, "alice@example.com", u.Email)
+	require.Equal(t, uid, u.ID)
+
+	// 重复邮箱
+	_, err = s.Users.Create("alice@example.com", "otherpwd")
+	require.Error(t, err) // duplicate entry
+}
+
 func TestNodesNewSchema(t *testing.T) {
 	db := openTestDB(t)
 	s, err := store.New(db)
