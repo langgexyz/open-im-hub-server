@@ -38,6 +38,12 @@ func IssueCredential(uid, appID string, privKey *ecdsa.PrivateKey, ttlSeconds in
 	return payloadB64 + "." + hex.EncodeToString(sig), nil
 }
 
+// PubKeyFromHex derives the Ethereum address (hub public key) from a hub_private_key hex string.
+// Useful for tests to obtain the expected public key from a known private key.
+func PubKeyFromHex(privHex string) (string, error) {
+	return hubcrypto.PubKeyFromPrivHex(privHex)
+}
+
 // VerifyCredential verifies the credential signature and expiry, returning uid and app_id.
 // hubPublicKey is the Ethereum address (e.g. "0xabcd..."), case-insensitive.
 func VerifyCredential(credStr, hubPublicKey string) (uid, appID string, err error) {

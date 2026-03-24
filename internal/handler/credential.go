@@ -1,44 +1,49 @@
 package handler
 
 import (
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"strings"
-	"time"
+	"crypto/ecdsa"
+	"net/http"
 
+	"github.com/gin-gonic/gin"
+	hubauth "github.com/langgexyz/open-im-hub-server/internal/auth"
 	hubcrypto "github.com/langgexyz/open-im-hub-server/internal/crypto"
 )
 
-// VerifyCredential 验证 Hub Server 签发的 user_credential，返回 app_uid
-func VerifyCredential(tokenStr, hubPublicKey string) (string, error) {
-	parts := strings.SplitN(tokenStr, ".", 2)
-	if len(parts) != 2 {
-		return "", errors.New("malformed credential")
-	}
-	payloadB64, sigHex := parts[0], parts[1]
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(payloadB64)
+const credentialTTL = 300 // 5 分钟，足够完成订阅流程
+
+type CredentialHandler struct {
+	hubPrivKey *ecdsa.PrivateKey
+}
+
+func NewCredentialHandler(hubPrivKeyHex string) *CredentialHandler {
+	priv, err := hubcrypto.PrivKeyFromHex(hubPrivKeyHex)
 	if err != nil {
-		return "", errors.New("invalid payload encoding")
+		panic("invalid hub private key: " + err.Error())
 	}
-	var payload struct {
-		AppUID string `json:"app_uid"`
-		Exp    int64  `json:"exp"`
+	return &CredentialHandler{hubPrivKey: priv}
+}
+
+// Issue POST /user/credential { target_app_id }
+// 需要 JWT 中间件注入 uid
+func (h *CredentialHandler) Issue(c *gin.Context) {
+	var req struct {
+		TargetAppID string `json:"target_app_id" binding:"required"`
 	}
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return "", errors.New("invalid payload json")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
-	if time.Now().Unix() > payload.Exp {
-		return "", errors.New("credential expired")
+
+	uid := c.GetString(hubauth.ContextUID)
+	if uid == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing uid"})
+		return
 	}
-	sig, err := hex.DecodeString(sigHex)
-	if err != nil || len(sig) != 65 {
-		return "", errors.New("invalid signature format")
+
+	cred, err := hubauth.IssueCredential(uid, req.TargetAppID, h.hubPrivKey, credentialTTL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "issue credential failed"})
+		return
 	}
-	recovered, err := hubcrypto.Ecrecover([]byte(payloadB64), sig)
-	if err != nil || !strings.EqualFold(recovered, hubPublicKey) {
-		return "", errors.New("signature verification failed")
-	}
-	return payload.AppUID, nil
+	c.JSON(http.StatusOK, gin.H{"credential": cred})
 }

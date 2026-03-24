@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	hubauth "github.com/langgexyz/open-im-hub-server/internal/auth"
 	"github.com/langgexyz/open-im-hub-server/internal/store"
 )
 
@@ -25,7 +26,7 @@ func (h *DeviceTokenHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing credential"})
 		return
 	}
-	appUID, err := VerifyCredential(credStr, h.hubPublicKey)
+	appUID, _, err := hubauth.VerifyCredential(credStr, h.hubPublicKey)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credential: " + err.Error()})
 		return
