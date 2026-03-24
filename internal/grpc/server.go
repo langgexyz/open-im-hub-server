@@ -25,6 +25,7 @@ type NodeStore interface {
 	Upsert(n *store.Node) error
 	UpdateHeartbeat(pubKey string) error
 	List() ([]*store.Node, error)
+	UpdateProfile(appID, name, avatar, description string) error
 	GetDeviceTokens(appUIDs []string) (map[string][]store.DeviceToken, error)
 }
 

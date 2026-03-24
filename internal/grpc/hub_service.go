@@ -60,6 +60,14 @@ func (s *hubService) SignSession(ctx context.Context, req *hubv1.SignSessionRequ
 	}, nil
 }
 
+// UpdateNodeProfile — Node Server calls this after /node/init to update Hub directory profile
+func (s *hubService) UpdateNodeProfile(ctx context.Context, req *hubv1.UpdateNodeProfileRequest) (*hubv1.UpdateNodeProfileResponse, error) {
+	if err := s.store.UpdateProfile(req.AppId, req.Name, req.Avatar, req.Description); err != nil {
+		return nil, status.Error(codes.Internal, "update profile: "+err.Error())
+	}
+	return &hubv1.UpdateNodeProfileResponse{Ok: true}, nil
+}
+
 // PushNotify 转发离线推送（APNs/FCM）
 func (s *hubService) PushNotify(ctx context.Context, req *hubv1.PushNotifyRequest) (*hubv1.PushNotifyResponse, error) {
 	if len(req.AppUids) == 0 {

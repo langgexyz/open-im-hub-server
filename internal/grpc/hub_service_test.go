@@ -44,6 +44,25 @@ func (m *mockStore) GetByPublicKey(k string) (*store.Node, error) {
 func (m *mockStore) Upsert(n *store.Node) error         { m.nodes[n.AppPublicKey] = n; return nil }
 func (m *mockStore) UpdateHeartbeat(k string) error     { return nil }
 func (m *mockStore) List() ([]*store.Node, error)       { return nil, nil }
+func (m *mockStore) UpdateProfile(appID, name, avatar, description string) error {
+	n, ok := m.nodes[appID]
+	if !ok {
+		// find by AppID (nodes map is keyed by AppPublicKey, look up by AppID)
+		for _, node := range m.nodes {
+			if node.AppID == appID {
+				node.Name = name
+				node.Avatar = avatar
+				node.Description = description
+				return nil
+			}
+		}
+		return fmt.Errorf("not found")
+	}
+	n.Name = name
+	n.Avatar = avatar
+	n.Description = description
+	return nil
+}
 func (m *mockStore) GetDeviceTokens(appUIDs []string) (map[string][]store.DeviceToken, error) {
 	return nil, nil
 }
@@ -59,13 +78,11 @@ func buildMsg(parts ...[]byte) []byte {
 }
 
 func TestUpdateNodeProfile(t *testing.T) {
-	t.Skip("TODO: implement TestUpdateNodeProfile once UpdateNodeProfile is wired in hub_service.go")
 	ms := newMockStore()
 	nodePriv, nodePub, err := hubcrypto.GenerateKey()
 	require.NoError(t, err)
-	_ = nodePriv
 	ms.nodes[nodePub] = &store.Node{
-		AppPublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
+		AppID: "node-x", AppPublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
 	}
 
 	hubPriv, hubPub, _ := hubcrypto.GenerateKey()
@@ -78,10 +95,36 @@ func TestUpdateNodeProfile(t *testing.T) {
 	defer conn.Close()
 	client := hubv1.NewHubServiceClient(conn)
 
-	// TODO: build signed metadata and call svc.UpdateNodeProfile(...)
-	_ = client
-	req := &hubv1.UpdateNodeProfileRequest{}
-	_ = req
+	req := &hubv1.UpdateNodeProfileRequest{
+		AppId:       "node-x",
+		Name:        "Test Node",
+		Avatar:      "http://avatar.png",
+		Description: "test desc",
+	}
+	reqBytes, _ := proto.Marshal(req)
+
+	method := "/hub.v1.HubService/UpdateNodeProfile"
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	bodyHash := hubcrypto.Keccak256(reqBytes)
+	msg := buildMsg([]byte(method), bodyHash, []byte(timestamp))
+	sig, _ := hubcrypto.Sign(msg, nodePriv)
+
+	md := metadata.Pairs(
+		"x-node-public-key", nodePub,
+		"x-node-timestamp", timestamp,
+		"x-node-body-hash", hex.EncodeToString(bodyHash),
+		"x-node-sig", hex.EncodeToString(sig),
+	)
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+	resp, err := client.UpdateNodeProfile(ctx, req)
+	require.NoError(t, err)
+	require.True(t, resp.Ok)
+
+	// verify the profile was updated in the mock store
+	n := ms.nodes[nodePub]
+	require.Equal(t, "Test Node", n.Name)
+	require.Equal(t, "http://avatar.png", n.Avatar)
+	require.Equal(t, "test desc", n.Description)
 }
 
 func TestHeartbeat(t *testing.T) {
