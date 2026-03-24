@@ -20,6 +20,9 @@ import (
 	hubv1 "github.com/langgexyz/open-im-hub-proto/hub/v1"
 )
 
+// 确认新 proto 方法存在
+var _ = hubv1.UpdateNodeProfileRequest{}
+
 // mockStore 最小化 store mock，供测试使用
 type mockStore struct {
 	nodes map[string]*store.Node
