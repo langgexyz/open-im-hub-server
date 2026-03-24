@@ -170,7 +170,7 @@ func TestSignSession(t *testing.T) {
 	ms := newMockStore()
 	nodePriv, nodePub, _ := hubcrypto.GenerateKey()
 	ms.nodes[nodePub] = &store.Node{
-		AppPublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
+		AppID: "node-abc", AppPublicKey: nodePub, Status: 1, ExpiresAt: time.Now().Add(time.Hour),
 	}
 
 	hubPriv, hubPub, _ := hubcrypto.GenerateKey()
@@ -183,9 +183,9 @@ func TestSignSession(t *testing.T) {
 	defer conn.Close()
 	client := hubv1.NewHubServiceClient(conn)
 
-	// 构造有效 user_credential（由 hub 私钥签名）
+	// 构造有效 user_credential（由 hub 私钥签名，新格式：uid + app_id）
 	expiry := time.Now().Add(time.Hour).Unix()
-	payload := fmt.Sprintf(`{"app_uid":"user_abc","exp":%d}`, expiry)
+	payload := fmt.Sprintf(`{"uid":"user_abc","app_id":"node-abc","exp":%d}`, expiry)
 	b64 := base64.RawURLEncoding.EncodeToString([]byte(payload))
 	credSig, _ := hubcrypto.Sign([]byte(b64), hubPriv)
 	credential := b64 + "." + hex.EncodeToString(credSig)
