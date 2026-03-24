@@ -7,11 +7,11 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/stretchr/testify/require"
 	"github.com/langgexyz/open-im-hub-server/internal/store"
+	"github.com/stretchr/testify/require"
 )
 
-func testStore(t *testing.T) *store.Store {
+func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_MYSQL_DSN")
 	if dsn == "" {
@@ -19,35 +19,25 @@ func testStore(t *testing.T) *store.Store {
 	}
 	db, err := sql.Open("mysql", dsn)
 	require.NoError(t, err)
+	return db
+}
+
+func testStore(t *testing.T) (*store.Store, *sql.DB) {
+	t.Helper()
+	db := openTestDB(t)
 	s, err := store.New(db)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		db.Exec("TRUNCATE TABLE nodes")
-		db.Exec("TRUNCATE TABLE activation_codes")
+		db.Exec("TRUNCATE TABLE users")
 		db.Exec("TRUNCATE TABLE device_tokens")
 		db.Close()
 	})
-	return s
-}
-
-func TestActivationCode(t *testing.T) {
-	s := testStore(t)
-
-	err := s.Codes.Insert("CODE123", time.Now().Add(time.Hour))
-	require.NoError(t, err)
-
-	err = s.Codes.Consume("CODE123")
-	require.NoError(t, err)
-
-	err = s.Codes.Consume("CODE123")
-	require.ErrorIs(t, err, store.ErrCodeUsed)
-
-	err = s.Codes.Consume("NOTEXIST")
-	require.ErrorIs(t, err, store.ErrCodeNotFound)
+	return s, db
 }
 
 func TestNodeCRUD(t *testing.T) {
-	s := testStore(t)
+	s, _ := testStore(t)
 
 	node := &store.Node{
 		NodeID:        "app-001",
@@ -71,7 +61,7 @@ func TestNodeCRUD(t *testing.T) {
 }
 
 func TestDeviceTokens(t *testing.T) {
-	s := testStore(t)
+	s, _ := testStore(t)
 
 	require.NoError(t, s.DeviceTokens.Upsert("uid_aaa", 1, "token_ios_aaa"))
 	require.NoError(t, s.DeviceTokens.Upsert("uid_aaa", 1, "token_ios_aaa_v2"))
@@ -80,4 +70,33 @@ func TestDeviceTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tokens, 1)
 	require.Equal(t, "token_ios_aaa_v2", tokens["uid_aaa"][0].Token)
+}
+
+func TestUsersTableExists(t *testing.T) {
+	db := openTestDB(t)
+	s, err := store.New(db)
+	require.NoError(t, err)
+	_ = s
+	t.Cleanup(func() {
+		db.Exec("TRUNCATE TABLE users")
+		db.Close()
+	})
+	// 验证 users 表存在且能插入
+	_, err = db.Exec(`INSERT INTO users (email, password) VALUES (?,?)`, "test@example.com", "hash")
+	require.NoError(t, err)
+}
+
+func TestNodesNewSchema(t *testing.T) {
+	db := openTestDB(t)
+	s, err := store.New(db)
+	require.NoError(t, err)
+	_ = s
+	t.Cleanup(func() {
+		db.Exec("TRUNCATE TABLE nodes")
+		db.Close()
+	})
+	// 验证 nodes 新字段存在
+	_, err = db.Exec(`INSERT INTO nodes (app_id, app_public_key, node_server_addr, node_web_addr, admin_uid, status, expires_at)
+        VALUES (?,?,?,?,?,?,?)`, "testid", "0xabc", "http://node:8080", "http://node.example.com", "uid1", 0, time.Now().Add(time.Hour))
+	require.NoError(t, err)
 }
