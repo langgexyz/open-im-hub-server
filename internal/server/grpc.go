@@ -47,3 +47,6 @@ func (a *nodeStoreAdapter) List() ([]*store.Node, error)                 { retur
 func (a *nodeStoreAdapter) GetDeviceTokens(appUIDs []string) (map[string][]store.DeviceToken, error) {
 	return a.s.DeviceTokens.GetByUIDs(appUIDs)
 }
+func (a *nodeStoreAdapter) UpdateProfile(appID, name, avatar, description string) error {
+	return a.s.Nodes.UpdateProfile(appID, name, avatar, description)
+}
