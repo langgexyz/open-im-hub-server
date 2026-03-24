@@ -12,7 +12,7 @@ type DeviceTokenStore struct{ db *sql.DB }
 
 func (s *DeviceTokenStore) Upsert(appUID string, platform int8, token string) error {
 	_, err := s.db.Exec(
-		`INSERT INTO device_tokens (app_uid, platform, token) VALUES (?, ?, ?)
+		`INSERT INTO device_tokens (uid, platform, token) VALUES (?, ?, ?)
 		 ON DUPLICATE KEY UPDATE token = VALUES(token)`,
 		appUID, platform, token,
 	)
@@ -33,7 +33,7 @@ func (s *DeviceTokenStore) GetByUIDs(appUIDs []string) (map[string][]DeviceToken
 		placeholders += "?"
 	}
 	rows, err := s.db.Query(
-		`SELECT app_uid, platform, token FROM device_tokens WHERE app_uid IN (`+placeholders+`)`,
+		`SELECT uid, platform, token FROM device_tokens WHERE uid IN (`+placeholders+`)`,
 		args...,
 	)
 	if err != nil {
