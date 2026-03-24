@@ -2,9 +2,12 @@ package store
 
 import (
 	"database/sql"
-	"fmt"
+	"errors"
 	"time"
 )
+
+// ErrNodeNotFound is returned when a node lookup finds no matching row.
+var ErrNodeNotFound = errors.New("node not found")
 
 type Node struct {
 	ID             uint64
@@ -26,6 +29,8 @@ type NodeStore struct{ db *sql.DB }
 
 // Upsert 以 app_id 为唯一键做幂等写入（INSERT ... ON DUPLICATE KEY UPDATE）
 // status=0（pending），激活成功后调用 Activate 改为 status=1
+// Note: expires_at is always set to now+1year regardless of n.ExpiresAt;
+// this is intentional — expiry is managed server-side, not caller-supplied.
 func (s *NodeStore) Upsert(n *Node) error {
 	_, err := s.db.Exec(`
         INSERT INTO nodes (app_id, app_public_key, node_server_addr, node_web_addr, admin_uid, status, expires_at)
@@ -43,8 +48,15 @@ func (s *NodeStore) Upsert(n *Node) error {
 
 // Activate 将节点标记为 status=1（active）
 func (s *NodeStore) Activate(appID string) error {
-	_, err := s.db.Exec(`UPDATE nodes SET status = 1 WHERE app_id = ?`, appID)
-	return err
+	res, err := s.db.Exec(`UPDATE nodes SET status = 1 WHERE app_id = ?`, appID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNodeNotFound
+	}
+	return nil
 }
 
 // UpdateProfile 更新 Hub 目录中的节点资料（由 UpdateNodeProfile gRPC 调用）
@@ -70,7 +82,7 @@ func (s *NodeStore) GetByAppID(appID string) (*Node, error) {
 		&avatar, &description, &n.NodeServerAddr, &n.NodeWebAddr,
 		&adminUID, &n.Status, &n.ExpiresAt, &lastHB)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("node not found")
+		return nil, ErrNodeNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -85,6 +97,8 @@ func (s *NodeStore) GetByAppID(appID string) (*Node, error) {
 }
 
 // GetByPublicKey 按 app_public_key 查询（gRPC 拦截器使用）
+// Note: intentionally scans only the fields needed for authentication;
+// profile fields (name, avatar, description) are omitted for fast-path lookup.
 func (s *NodeStore) GetByPublicKey(pubKey string) (*Node, error) {
 	var n Node
 	var lastHB sql.NullTime
@@ -93,7 +107,7 @@ func (s *NodeStore) GetByPublicKey(pubKey string) (*Node, error) {
         FROM nodes WHERE app_public_key = ?`, pubKey,
 	).Scan(&n.ID, &n.AppID, &n.AppPublicKey, &n.NodeServerAddr, &n.Status, &n.ExpiresAt, &lastHB)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("node not found")
+		return nil, ErrNodeNotFound
 	}
 	if err != nil {
 		return nil, err
