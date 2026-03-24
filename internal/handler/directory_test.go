@@ -38,6 +38,42 @@ func TestDirectoryList(t *testing.T) {
 	require.Equal(t, "My Node", resp.Nodes[0]["name"])
 }
 
+func TestDirectoryList_Empty(t *testing.T) {
+	db := openTestDB(t)
+	s, _ := store.New(db)
+
+	gin.SetMode(gin.TestMode)
+	h := handler.NewDirectoryHandler(s.Nodes)
+	r := gin.New()
+	r.GET("/nodes", h.List)
+
+	req := httptest.NewRequest(http.MethodGet, "/nodes", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	nodes, ok := resp["nodes"]
+	require.True(t, ok)
+	require.NotNil(t, nodes) // must be [] not null
+}
+
+func TestDirectoryGet_NotFound(t *testing.T) {
+	db := openTestDB(t)
+	s, _ := store.New(db)
+
+	gin.SetMode(gin.TestMode)
+	h := handler.NewDirectoryHandler(s.Nodes)
+	r := gin.New()
+	r.GET("/nodes/:app_id", h.Get)
+
+	req := httptest.NewRequest(http.MethodGet, "/nodes/nonexistent-id", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestDirectoryGet(t *testing.T) {
 	db := openTestDB(t)
 	s, _ := store.New(db)
